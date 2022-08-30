@@ -24,7 +24,7 @@ def get_args():
     parser.add_argument('--save_freq', default=2000, type=int, help="frequency to save model and image")
     parser.add_argument('--print_freq', default=500, type=int, help="frequency to print loss")
     parser.add_argument('--device', default=0, type=int, help="time sampling in for boundary loss")
-    parser.add_argument('--data_path', default='../data/cyl_Re250.mat', type=str, help="data path for cylinder")
+    parser.add_argument('--data_path', default='./data/cyl_Re250.mat', type=str, help="data path for cylinder")
 
     return parser.parse_args()
 
