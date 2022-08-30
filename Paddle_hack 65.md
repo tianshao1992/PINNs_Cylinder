@@ -62,7 +62,7 @@ $$
 |初始边界条件 | $in_1:  {u- u_{initial}}=0;in_2:  v- v_{initial}=0;in_3:  p- p_{initial}=0$ |
 
 
-![conputational domain](figs_md/computational domain.png)
+![conputational domain](figs%20for%20md/computational%20domain.png)
 
 考虑的气动性能参数包括刚体表面的受力，即y方向上的升力和x方向上的阻力，这些性能参数可以表示为物理场在圆柱表面的积分形式：
 
@@ -79,7 +79,7 @@ $$
 为了验证圆柱绕流数值计算的准确性，下图展示了升力系数和阻力系数与其他研究的对比。由图可知，在 Re=60～500范围内，本文所采用的数值计算方法得到的系数与文献[2-5]的研究基本吻合，因此，本次所采用的Re = 250 工况结果较为准确。
 | 阻力系数曲线 | 升力系数曲线 |
 | ---- | -----|
-|![Cd](figs_md/Cd.jpg)|![Cl](figs_md/Cl.jpg))|
+|![Cd](figs%20for%20md/Cd.JPG)|![Cl](figs%20for%20md/Cl.JPG)|
 
 
 ## 4.模型描述
