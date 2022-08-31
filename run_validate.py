@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import time
 import os
 import argparse
-from run_cylinder_2d_point import read_data, Net, inference
+from run_train import read_data, Net, inference
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
