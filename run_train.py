@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import time
 import os
 import argparse
+import sys
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
@@ -172,7 +173,6 @@ def inference(inn_var, model):
 if __name__ == '__main__':
 
     opts = get_args()
-    print(opts)
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(opts.device)  # 指定第一块gpu
 
@@ -184,10 +184,15 @@ if __name__ == '__main__':
     points_name = opts.points_name
     work_name = 'NS-cylinder-2d-t_' + points_name
     work_path = os.path.join('work', work_name)
-    isCreated = os.path.exists(work_path)
+    tran_path = os.path.join('work', work_name, 'train')
+    isCreated = os.path.exists(tran_path)
     if not isCreated:
-        os.makedirs(work_path)
+        os.makedirs(tran_path)
 
+    # 将控制台的结果输出到a.log文件，可以改成a.txt
+    sys.stdout = visual_data.Logger(os.path.join(work_path, 'train.log'), sys.stdout)
+
+    print(opts)
     times, nodes, field = read_data()
     INN, BCS, ICS = BCS_ICS(nodes, points_name)
 
@@ -257,14 +262,6 @@ if __name__ == '__main__':
 
         if iter > 0 and iter % opts.print_freq == 0:
 
-            with open(os.path.join(work_path, 'train.log'), 'a', encoding='utf-8') as f:
-                f.write('iter: {:6d}, lr: {:.1e}, cost: {:.2f}, dat_loss: {:.2e} \n'
-                  'eqs_loss: {:.2e}, BCS_loss_in: {:.2e}, BCS_loss_out: {:.2e}, '
-                  'BCS_loss_wall: {:.2e}, BCS_loss_meas: {:.2e}, ICS_loss_0: {:.2e} \n'.
-                  format(iter, learning_rate, time.time() - star_time, log_loss[-1][-1],
-                         log_loss[-1][0], log_loss[-1][1], log_loss[-1][2],
-                         log_loss[-1][3], log_loss[-1][4], log_loss[-1][5]))
-
             print('iter: {:6d}, lr: {:.1e}, cost: {:.2f}, dat_loss: {:.2e} \n'
                   'eqs_loss: {:.2e}, BCS_loss_in: {:.2e}, BCS_loss_out: {:.2e}, '
                   'BCS_loss_wall: {:.2e}, BCS_loss_meas: {:.2e}, ICS_loss_0: {:.2e}'.
@@ -283,7 +280,7 @@ if __name__ == '__main__':
             Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 2], 'BCS_loss_out')
             Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 3], 'BCS_loss_wall')
             Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 4], 'BCS_loss_meas')
-            plt.savefig(os.path.join(work_path, 'log_loss.svg'))
+            plt.savefig(os.path.join(tran_path, 'log_loss.svg'))
 
             star_time = time.time()
 
@@ -298,13 +295,13 @@ if __name__ == '__main__':
                 plt.clf()
                 Visual.plot_fields_ms(field_visual_t[t], field_visual_p[t], input_visual_p[0, :, :, :2],
                                       cmin_max=[[-5, -4], [6, 4]])
-                plt.savefig(os.path.join(work_path, 'loca_' + str(t) + '.jpg'))
+                plt.savefig(os.path.join(tran_path, 'loca_' + str(t) + '.jpg'))
 
                 plt.figure(3, figsize=(30, 20))
                 plt.clf()
                 Visual.plot_fields_ms(field_visual_t[t], field_visual_p[t], input_visual_p[0, :, :, :2].numpy())
 
-                plt.savefig(os.path.join(work_path, 'full_' + str(t) + '.jpg'))
+                plt.savefig(os.path.join(tran_path, 'full_' + str(t) + '.jpg'))
 
             torch.save({'epoch': iter, 'model': Net_model.state_dict(), 'log_loss': log_loss},
                        os.path.join(work_path, 'latest_model.pth'))

@@ -11,6 +11,21 @@ import matplotlib.cm as cm
 from matplotlib import ticker, rcParams
 from matplotlib.ticker import MultipleLocator
 
+import sys
+
+
+class Logger(object):
+    def __init__(self, filename, stream=sys.stdout):
+        self.terminal = stream
+        self.log = open(filename, 'w')
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        pass
+
 
 class matplotlib_vision(object):
 

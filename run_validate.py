@@ -1,3 +1,4 @@
+import sys
 import h5py
 import numpy as np
 import torch
@@ -16,7 +17,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 def get_args():
 
     parser = argparse.ArgumentParser('PINNs for naiver-stokes cylinder with Karman Vortex', add_help=False)
-    parser.add_argument('--points_name', default="96+24+16", type=str)
+    parser.add_argument('--points_name', default="30+4", type=str)
     parser.add_argument('--Nx_EQs', default=30000, type=int, help="xy sampling in for equation loss")
     parser.add_argument('--Nt_EQs', default=15, type=int, help="time sampling in for equation loss")
     parser.add_argument('--Nt_BCs', default=120, type=int, help="time sampling in for boundary loss")
@@ -34,7 +35,7 @@ def get_args():
 if __name__ == '__main__':
 
     opts = get_args()
-    print(opts)
+
     np.random.seed(2022)
     os.environ["CUDA_VISIBLE_DEVICES"] = str(opts.device)  # 指定第一块gpu
 
@@ -51,7 +52,12 @@ if __name__ == '__main__':
     if not isCreated:
         os.makedirs(vald_path)
 
-    times, nodes, field = read_data(opts.data_path)
+    # 将控制台的结果输出到a.log文件，可以改成a.txt
+    sys.stdout = visual_data.Logger(os.path.join(work_path, 'valid.log'), sys.stdout)
+
+
+    print(opts)
+    times, nodes, field = read_data()
     Dyn_model = Dynamicor(device, nodes[:, (0,1), :])
 
     Nt, Nx, Ny, Nf = field.shape[0], field.shape[1], field.shape[2], field.shape[3]
@@ -78,21 +84,24 @@ if __name__ == '__main__':
     start_epoch, log_loss = Net_model.loadmodel(os.path.join(work_path, 'latest_model.pth'))
 
 ####################################### plot loss #################################################################################
-    print("plot training loss")
-    plt.figure(1, figsize=(15, 10))
-    plt.clf()
-    Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, -1], 'unsupervised loss')
-    Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 0], 'conversation loss')
-    plt.savefig(os.path.join(vald_path, 'loss_eqs_data.jpg'), dpi=300)
+    try:
+        print("plot training loss")
+        plt.figure(1, figsize=(15, 10))
+        plt.clf()
+        Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, -1], 'unsupervised loss')
+        Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 0], 'conversation loss')
+        plt.savefig(os.path.join(vald_path, 'loss_eqs_data.jpg'), dpi=300)
 
-    plt.figure(2, figsize=(15, 10))
-    plt.clf()
-    Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 1], 'inlet boundary loss')
-    Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 2], 'outlet boundary loss')
-    Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 3], 'cylinder boundary loss')
-    Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 4], 'measurement loss')
-    Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 5], 'initial boundary loss')
-    plt.savefig(os.path.join(vald_path, 'loss_boundary.jpg'), dpi=300)
+        plt.figure(2, figsize=(15, 10))
+        plt.clf()
+        Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 1], 'inlet boundary loss')
+        Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 2], 'outlet boundary loss')
+        Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 3], 'cylinder boundary loss')
+        Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 4], 'measurement loss')
+        Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 5], 'initial boundary loss')
+        plt.savefig(os.path.join(vald_path, 'loss_boundary.jpg'), dpi=300)
+    except:
+        print("No loss log")
 
 ####################################### plot several fields #################################################################################
     print("plot several true and predicted fields")
@@ -119,13 +128,13 @@ if __name__ == '__main__':
         plt.savefig(os.path.join(vald_path, 'full_' + str(inds[t]) + '.jpg'))
 
 ####################################### plot continous fields #################################################################################
-
-    input_visual_p = torch.tensor(input_visual[::5], dtype=torch.float32)
+    input_visual_p = torch.tensor(input_visual[:100:5], dtype=torch.float32)
     field_visual_p = inference(input_visual_p.to(device), Net_model)
-    field_visual_t = field_visual[::5]
+    field_visual_t = field_visual[:100:5]
     field_visual_p = field_visual_p.cpu().numpy()
     input_visual_p = input_visual_p.cpu().numpy()
     ori_input = input_norm.back(input_visual_p[:, 0, 0, :])
+    non_time = (ori_input[:, -1] - ori_input[0, -1]) / (ori_input[-1, -1] - ori_input[0, -1])
 
     # plot continous fields at points
     ind_xs = np.random.choice(np.arange(0, Nx), 4)
@@ -137,12 +146,16 @@ if __name__ == '__main__':
     for j in range(3):
         plt.subplot(2, 2, j+1)
         plt.ylim(lims[j])
-        plt.title(tits[j])
+        plt.rcParams['font.family'] = 'Times New Roman'
+        plt.rcParams['font.size'] = 20
         for i, (ind_x, ind_y) in enumerate(zip(ind_xs, ind_ys)):
-            plt.plot(ori_input[:, -1], field_visual_t[:, ind_x, ind_y, j])
-            plt.scatter(ori_input[:, -1], field_visual_p[:, ind_x, ind_y, j])
+            plt.plot(non_time, field_visual_t[:, ind_x, ind_y, j])
+            plt.scatter(non_time, field_visual_p[:, ind_x, ind_y, j])
         plt.legend(['original', 'predicted'])
-    plt.savefig(os.path.join(vald_path, 'contous_fields_point.jpg'))
+        plt.grid()
+        plt.xlabel('Time t/T')
+        plt.ylabel('Physical field of ' + tits[j])
+    plt.savefig(os.path.join(vald_path, 'continuous_fields_point.jpg'))
 
     ####################################### plot dynamic coefficient ############################################################################
     print("plot dynamic coefficient")
@@ -151,15 +164,32 @@ if __name__ == '__main__':
     ori_forces = ori_forces.cpu().numpy()
     pre_forces = pre_forces.cpu().numpy()
 
-    plt.figure(6, figsize=(15, 10))
+    plt.figure(6, figsize=(8, 6))
     plt.clf()
+    plt.rcParams['font.family'] = 'Times New Roman'
+    plt.rcParams['font.size'] = 20
     plt.plot(ori_input[:, -1], ori_forces[:, 0], 'r-')
     plt.plot(ori_input[:, -1], pre_forces[:, 0], 'ro')
     plt.plot(ori_input[:, -1], ori_forces[:, 1], 'b-')
     plt.plot(ori_input[:, -1], pre_forces[:, 1], 'bo')
     plt.ylim([-0.5, 1.0])
+    plt.xlabel('Time t/T')
+    plt.ylabel('Force F/N')
+    plt.grid()
     plt.legend(['original lift', 'predicted lift', 'original drag', 'predicted drag'])
     plt.savefig(os.path.join(vald_path, 'forces.jpg'))
+
+    ori_drag_mean = np.mean(ori_forces[:, 1])
+    pre_drag_mean = np.mean(pre_forces[:, 1])
+    err_drag_mean = np.abs(pre_drag_mean - ori_drag_mean)/ori_drag_mean
+
+    ori_lift_delt = np.max(ori_forces[:, 0]) - np.min(ori_forces[:, 0])
+    pre_lift_delt = np.max(pre_forces[:, 0]) - np.min(pre_forces[:, 0])
+    err_lift_delt = np.abs(pre_lift_delt - ori_lift_delt)/ori_lift_delt
+
+    print('origin drag mean: {:.3f}, predicted drag mean: {:.3f}, relative error: {:.3f}%, \n'
+          'origin lift delta: {:.3f}, predicted lift delta: {:.3f}, relative error: {:.3f}%, \n'.format
+          (ori_drag_mean, pre_drag_mean, err_drag_mean*100, ori_lift_delt, pre_lift_delt, err_lift_delt*100,))
 
 ####################################### L2 error ##############################################################################
     print("plot fields L2 error ")
@@ -167,13 +197,16 @@ if __name__ == '__main__':
     err_L2 = np.linalg.norm(err, axis=(1, 2))/np.linalg.norm(field_visual_t[:, :, :, (0, 1, 1)], axis=(1, 2))
     plt.figure(10, figsize=(15, 10))
     plt.clf()
+    plt.rcParams['font.family'] = 'Times New Roman'
+    plt.rcParams['font.size'] = 20
     for i in range(3):
-        plt.plot(ori_input[:, -1], err_L2[:, i], '-', linewidth=2.0)
+        plt.plot(non_time, err_L2[:, i], '-', linewidth=2.0)
     plt.legend(['p', 'u', 'v'])
-    plt.xlabel('Time t/s')
+    plt.xlabel('Time t/T')
     plt.ylabel('Relative $L_2$ error')
     plt.grid()
     plt.savefig(os.path.join(vald_path, 'L2.jpg'))
+    print('Relative L2 error: {:.3f}'.format(np.mean(err_L2),))
 
 ####################################### plot fields gif #################################################################################
     # plot continous fields
