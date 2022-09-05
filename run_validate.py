@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import time
 import os
 import argparse
-from run_train import read_data, Net, inference
+from run_train import read_data, Net_multi, Net_single, inference
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
@@ -18,14 +18,18 @@ def get_args():
 
     parser = argparse.ArgumentParser('PINNs for naiver-stokes cylinder with Karman Vortex', add_help=False)
     parser.add_argument('--points_name', default="30+4", type=str)
-    parser.add_argument('--Nx_EQs', default=30000, type=int, help="xy sampling in for equation loss")
-    parser.add_argument('--Nt_EQs', default=15, type=int, help="time sampling in for equation loss")
-    parser.add_argument('--Nt_BCs', default=120, type=int, help="time sampling in for boundary loss")
+    parser.add_argument('--Layer_depth', default=6, type=int, help="Number of Layers depth")
+    parser.add_argument('--Layer_width', default=64, type=int, help="Number of Layers width")
+    parser.add_argument('--Net_pattern', default='single', type=str, help="single or multi networks")
     parser.add_argument('--epochs_adam', default=400000, type=int)
     parser.add_argument('--save_freq', default=2000, type=int, help="frequency to save model and image")
     parser.add_argument('--print_freq', default=500, type=int, help="frequency to print loss")
     parser.add_argument('--device', default=0, type=int, help="time sampling in for boundary loss")
     parser.add_argument('--data_path', default='./data/cyl_Re250.mat', type=str, help="data path for cylinder")
+
+    parser.add_argument('--Nx_EQs', default=30000, type=int, help="xy sampling in for equation loss")
+    parser.add_argument('--Nt_EQs', default=15, type=int, help="time sampling in for equation loss")
+    parser.add_argument('--Nt_BCs', default=120, type=int, help="time sampling in for boundary loss")
 
     return parser.parse_args()
 
@@ -78,7 +82,11 @@ if __name__ == '__main__':
     add_field = field_visual[:, 0, :, :].reshape((Nt, -1, Ny, Nf))
     field_visual = np.concatenate((field_visual, add_field), axis=1)
 
-    Net_model = Net(planes=[3, 64, 64, 64, 64, 64, 64, 3], data_norm=(input_norm, field_norm)).to(device)
+    planes = [3,] + [opts.Layer_width] * opts.Layer_depth + [3,]
+    if opts.Net_pattern == "single":
+        Net_model = Net_single(planes=planes, data_norm=(input_norm, field_norm)).to(device)
+    elif opts.Net_pattern == "multi":
+        Net_model = Net_multi(planes=planes, data_norm=(input_norm, field_norm)).to(device)
     Visual = visual_data.matplotlib_vision(vald_path, field_name=('p', 'u', 'v'), input_name=('x', 'y'))
     Visual.font['size'] = 20
     start_epoch, log_loss = Net_model.loadmodel(os.path.join(work_path, 'latest_model.pth'))

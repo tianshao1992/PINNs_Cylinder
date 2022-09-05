@@ -2,29 +2,14 @@ import paddle
 import paddle.nn as nn
 import numpy as np
 
+
 def gradients(y, x, order=1, create=True):
     if order == 1:
-        return paddle.grad(y, x, grad_outputs=paddle.ones_like(y),
-                                   create_graph=create, retain_graph=True, only_inputs=True)[0]
+        return paddle.autograd.grad(y, x, create_graph=create, retain_graph=True)[0]
     else:
-        return paddle.stack([paddle.grad([y[:, i].sum()], [x], create_graph=True, retain_graph=True)[0]
-                            for i in range(y.shape[1])], axis=-1)
+        return paddle.stack([paddle.autograd.grad([y[:, i].sum()], [x], create_graph=True, retain_graph=True)[0]
+                             for i in range(y.shape[1])], axis=-1)
 
-
-def index_tensor(x, idx):
-    return paddle.to_tensor(x.numpy().inx)
-
-def jacobians(u, x, order=1):
-    if order == 1:
-        return paddle.autograd.functional.jacobian(u, x, create_graph=True)[0]
-
-
-def initialize_weights(net):
-    for m in net.sublayers():
-        if isinstance(m, nn.Linear):
-            nn.init.xavier_normal_(m.weight, gain=1)
-            # nn.init.xavier_uniform(m.weight, gain=1)
-            m.bias.data.zero_()
 
 class DeepModel_multi(nn.Layer):
     def __init__(self, planes, data_norm, active=nn.GELU()):
@@ -34,41 +19,40 @@ class DeepModel_multi(nn.Layer):
 
         self.x_norm = data_norm[0]
         self.f_norm = data_norm[1]
-        self.g_norm = data_norm[2]
-        self.layers = nn.ModuleList()
+        self.layers = nn.LayerList()
+
         for j in range(self.planes[-1]):
             layer = []
             for i in range(len(self.planes) - 2):
-                layer.append(nn.Linear(self.planes[i], self.planes[i + 1]))
+                layer.append(nn.Linear(self.planes[i], self.planes[i + 1], weight_attr=nn.initializer.XavierNormal()))
                 layer.append(self.active)
-            layer.append(nn.Linear(self.planes[-2], 1))
+            layer.append(nn.Linear(self.planes[-2], 1, weight_attr=nn.initializer.XavierNormal()))
             self.layers.append(nn.Sequential(*layer))
-        self.apply(initialize_weights)
+            # self.layers[-1].apply(initialize_weights)
 
     def forward(self, in_var):
-        in_var = self.x_norm.norm(in_var)
+        # in_var = self.x_norm.norm(in_var)
+        # in_var = in_var * self.input_transform
         y = []
         for i in range(self.planes[-1]):
             y.append(self.layers[i](in_var))
-        return self.f_norm.back(paddle.concat(y, axis=-1))
+        return paddle.concat(y, axis=-1)
 
     def loadmodel(self, File):
         try:
             checkpoint = paddle.load(File)
-            self.set_state_dict(checkpoint['model'])        # 从字典中依次读取
+            self.set_state_dict(checkpoint['model'])  # 从字典中依次读取
             start_epoch = checkpoint['epoch']
             print("load start epoch at " + str(start_epoch))
-            try:
-                log_loss = checkpoint['log_loss']
-            except:
-                log_loss= []
-            return start_epoch, log_loss
+            log_loss = checkpoint['log_loss']  # .tolist()
+            return log_loss, start_epoch
         except:
-            print("load model failed, start a new model!")
+            print("load model failed！ start a new model.")
             return 0, []
 
     def equation(self, inv_var, out_var):
         return 0
+
 
 class DeepModel_single(nn.Layer):
     def __init__(self, planes, data_norm, active=nn.GELU()):
@@ -78,19 +62,17 @@ class DeepModel_single(nn.Layer):
 
         self.x_norm = data_norm[0]
         self.f_norm = data_norm[1]
-        if len(data_norm) > 2:
-            self.g_norm = data_norm[2]
         self.layers = nn.LayerList()
-        for i in range(len(self.planes)-2):
-            self.layers.append(nn.Linear(self.planes[i], self.planes[i + 1]))
+        for i in range(len(self.planes) - 2):
+            self.layers.append(nn.Linear(self.planes[i], self.planes[i + 1], weight_attr=nn.initializer.XavierNormal()))
             self.layers.append(self.active)
-        self.layers.append(nn.Linear(self.planes[-2], self.planes[-1]))
+        self.layers.append(nn.Linear(self.planes[-2], self.planes[-1], weight_attr=nn.initializer.XavierNormal()))
 
         self.layers = nn.Sequential(*self.layers)
         # self.apply(initialize_weights)
 
     def forward(self, inn_var, is_norm=True):
-        inn_var = self.x_norm.norm(inn_var)
+        # inn_var = self.x_norm.norm(inn_var)
         out_var = self.layers(inn_var)
 
         if is_norm:
@@ -98,35 +80,20 @@ class DeepModel_single(nn.Layer):
         else:
             return out_var
 
-
     def loadmodel(self, File):
         try:
             checkpoint = paddle.load(File)
-            self.set_state_dict(checkpoint['model'])        # 从字典中依次读取
+            self.set_state_dict(checkpoint['model'])  # 从字典中依次读取
             start_epoch = checkpoint['epoch']
             print("load start epoch at " + str(start_epoch))
-            log_loss = checkpoint['log_loss']
-            return start_epoch, log_loss
+            log_loss = checkpoint['log_loss']  # .tolist()
+            return log_loss, start_epoch
         except:
-            print("load model failed, start a new model!")
+            print("load model failed！ start a new model.")
             return 0, []
 
     def equation(self, **kwargs):
         return 0
-
-    def dirichlet(self, ind, out_var, value, is_norm=False):
-        if is_norm:
-            res = self.f_norm.norm(out_var[ind, :]) - self.f_norm.norm(value[ind].unsqueeze(-1))
-        else:
-            res = out_var[ind, :] - value[ind, :]
-        return res
-
-    def neumann(self, ind, out_var, in_var, value, norm):
-        duda = gradients(out_var.sum(), in_var)
-        dudx = duda[ind, :1]
-        dudy = duda[ind, 1:]
-        res = norm[ind, :1] * dudx + norm[ind, 1:] * dudy - value[ind, :]
-        return res
 
 
 class Dynamicor(nn.Layer):

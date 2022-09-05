@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from process_data import data_norm, data_sampler
-from basic_model import gradients, DeepModel_single
+from basic_model import gradients, DeepModel_single, DeepModel_multi
 import visual_data
 import matplotlib.pyplot as plt
 import time
@@ -17,14 +17,17 @@ def get_args():
 
     parser = argparse.ArgumentParser('PINNs for naiver-stokes cylinder with Karman Vortex', add_help=False)
     parser.add_argument('--points_name', default="8", type=str)
-    parser.add_argument('--Nx_EQs', default=30000, type=int, help="xy sampling in for equation loss")
-    parser.add_argument('--Nt_EQs', default=15, type=int, help="time sampling in for equation loss")
-    parser.add_argument('--Nt_BCs', default=120, type=int, help="time sampling in for boundary loss")
+    parser.add_argument('--Layer_depth', default=5, type=int, help="Number of Layers depth")
+    parser.add_argument('--Layer_width', default=64, type=int, help="Number of Layers width")
+    parser.add_argument('--Net_pattern', default='single', type=str, help="single or multi networks")
     parser.add_argument('--epochs_adam', default=400000, type=int)
     parser.add_argument('--save_freq', default=2000, type=int, help="frequency to save model and image")
-    parser.add_argument('--print_freq', default=500, type=int, help="frequency to print loss")
+    parser.add_argument('--print_freq', default=1000, type=int, help="frequency to print loss")
     parser.add_argument('--device', default=0, type=int, help="time sampling in for boundary loss")
 
+    parser.add_argument('--Nx_EQs', default=30000, type=int, help="xy sampling in for equation loss")
+    parser.add_argument('--Nt_EQs', default=5, type=int, help="time sampling in for equation loss")
+    parser.add_argument('--Nt_BCs', default=120, type=int, help="time sampling in for boundary loss")
     return parser.parse_args()
 
 def read_data():
@@ -94,9 +97,35 @@ def BCS_ICS(nodes, points):
 
     return INN, BCS, ICS
 
-class Net(DeepModel_single):
+class Net_single(DeepModel_single):
     def __init__(self, planes, data_norm):
-        super(Net, self).__init__(planes, data_norm, active=nn.Tanh())
+        super(Net_single, self).__init__(planes, data_norm, active=nn.Tanh())
+        self.Re = 250.
+
+    def equation(self, inn_var, out_var):
+        # a = grad(psi.sum(), in_var, create_graph=True, retain_graph=True)[0]
+        p, u, v = out_var[:, 0:1], out_var[:, 1:2], out_var[:, 2:3]
+
+        duda = gradients(u, inn_var)
+        dudx, dudy, dudt = duda[:, 0:1], duda[:, 1:2], duda[:, 2:3]
+        dvda = gradients(v, inn_var)
+        dvdx, dvdy, dvdt = dvda[:, 0:1], dvda[:, 1:2], dvda[:, 2:3]
+        d2udx2 = gradients(dudx, inn_var)[:, 0:1]
+        d2udy2 = gradients(dudy, inn_var)[:, 1:2]
+        d2vdx2 = gradients(dvdx, inn_var)[:, 0:1]
+        d2vdy2 = gradients(dvdy, inn_var)[:, 1:2]
+        dpda = gradients(p, inn_var)
+        dpdx, dpdy = dpda[:, 0:1], dpda[:, 1:2]
+
+        eq1 = dudt + (u * dudx + v * dudy) + dpdx - 1 / self.Re * (d2udx2 + d2udy2)
+        eq2 = dvdt + (u * dvdx + v * dvdy) + dpdy - 1 / self.Re * (d2vdx2 + d2vdy2)
+        eq3 = dudx + dvdy
+        eqs = torch.cat((eq1, eq2, eq3), dim=1)
+        return eqs
+
+class Net_multi(DeepModel_multi):
+    def __init__(self, planes, data_norm):
+        super(Net_multi, self).__init__(planes, data_norm, active=nn.Tanh())
         self.Re = 250.
 
     def equation(self, inn_var, out_var):
@@ -123,37 +152,40 @@ class Net(DeepModel_single):
 
 def train(inn_var, BCs, ICs, out_true, model, Loss, optimizer, scheduler, log_loss, opts):
 
-
-    inn = BCs[0].sampling(Nx=opts.Nx_EQs, Nt=opts.Nt_EQs); ind_inner = inn.shape[0] #随机抽取流场点
-    BC_in = BCs[1].sampling(Nx='all', Nt=opts.Nt_BCs); ind_BC_in = BC_in.shape[0] + ind_inner  #入口
+    inn = BCs[0].sampling(Nx=opts.Nx_EQs, Nt=opts.Nt_EQs) #随机抽取流场点
+    BC_in = BCs[1].sampling(Nx='all', Nt=opts.Nt_BCs); ind_BC_in = BC_in.shape[0]   #入口
     BC_out = BCs[2].sampling(Nx='all', Nt=opts.Nt_BCs); ind_BC_out = BC_out.shape[0] + ind_BC_in #出口
     BC_wall = BCs[3].sampling(Nx='all', Nt=opts.Nt_BCs); ind_BC_wall = BC_wall.shape[0] + ind_BC_out #圆柱
     BC_meas = BCs[4].sampling(Nx='all', Nt=opts.Nt_BCs); ind_BC_meas = BC_meas.shape[0] + ind_BC_wall
+    IC_0 = ICs[0].sampling(Nx='all') #初始场
 
-    IC_0 = ICs[0].sampling(Nx='all'); ind_IC_0 = IC_0.shape[0] + ind_BC_meas #初始场
+    inn_BCs = torch.cat((inn_var[BC_in], inn_var[BC_out], inn_var[BC_wall], inn_var[BC_meas], inn_var[IC_0]), dim=0).to(device)
+    out_BCs = torch.cat((out_true[BC_in], out_true[BC_out], out_true[BC_wall], out_true[BC_meas], out_true[IC_0]), dim=0).to(device)
 
-    inn_var = torch.cat((inn_var[inn], inn_var[BC_in], inn_var[BC_out], inn_var[BC_wall], inn_var[BC_meas], inn_var[IC_0]), dim=0)
-    out_true = torch.cat((out_true[inn], out_true[BC_in], out_true[BC_out], out_true[BC_wall], out_true[BC_meas], out_true[IC_0]), dim=0)
-    inn_var = inn_var.to(device)
-    out_true = out_true.to(device)
+    inn_EQs = inn_var[inn].to(device)
+    out_EQs = out_true[inn].to(device)
 
     def closure():
-        inn_var.requires_grad_(True)
-        optimizer.zero_grad()
-        out_var = model(inn_var)
-        res_i = model.equation(inn_var, out_var)
 
-        bcs_loss_1 = Loss(out_var[ind_inner:ind_BC_in, 1:], out_true[ind_inner:ind_BC_in, 1:])  #进口速度
-        bcs_loss_2 = Loss(out_var[ind_BC_in:ind_BC_out, 0], out_true[ind_BC_in:ind_BC_out, 0])  #出口压力
-        bcs_loss_3 = Loss(out_var[ind_BC_out:ind_BC_wall, 1:], out_true[ind_BC_out:ind_BC_wall, 1:])  #壁面速度
-        bcs_loss_4 = Loss(out_var[ind_BC_wall:ind_BC_meas, :], out_true[ind_BC_wall:ind_BC_meas, :])  #监督测点
-        ics_loss_0 = Loss(out_var[ind_BC_meas:ind_IC_0, :], out_true[ind_BC_meas:ind_IC_0, :])   #初始条件损失
-        eqs_loss = (res_i[:ind_inner]**2).mean()   #方程损失
+        optimizer.zero_grad()
+
+        inn_EQs.requires_grad_(True)
+        out_EQs_ = model(inn_EQs)
+        res_EQs = model.equation(inn_EQs, out_EQs_)
+        inn_BCs.requires_grad_(False)
+        out_BCs_ = model(inn_BCs)
+
+        bcs_loss_1 = Loss(out_BCs_[:ind_BC_in, 1:], out_BCs[:ind_BC_in, 1:])  #进口速度
+        bcs_loss_2 = Loss(out_BCs_[ind_BC_in:ind_BC_out, 0], out_BCs[ind_BC_in:ind_BC_out, 0])  #出口压力
+        bcs_loss_3 = Loss(out_BCs_[ind_BC_out:ind_BC_wall, 1:], out_BCs[ind_BC_out:ind_BC_wall, 1:])  #壁面速度
+        bcs_loss_4 = Loss(out_BCs_[ind_BC_wall:ind_BC_meas, :], out_BCs[ind_BC_wall:ind_BC_meas, :])  #监督测点
+        ics_loss_0 = Loss(out_BCs_[ind_BC_meas:, :], out_BCs[ind_BC_meas:, :])   #初始条件损失
+        eqs_loss = (res_EQs**2).mean()   #方程损失
 
         loss_batch = bcs_loss_1 + bcs_loss_2 + bcs_loss_3 + bcs_loss_4 + ics_loss_0 + eqs_loss
         loss_batch.backward()
 
-        data_loss = Loss(out_var, out_true)   #全部点的data loss  没有用来训练
+        data_loss = Loss(out_EQs_, out_EQs)   #全部点的data loss  没有用来训练
         log_loss.append([eqs_loss.item(), bcs_loss_1.item(), bcs_loss_2.item(), bcs_loss_3.item(), bcs_loss_4.item(),
                          ics_loss_0.item(), data_loss.item()])
 
@@ -231,18 +263,24 @@ if __name__ == '__main__':
     HBLoss = nn.SmoothL1Loss()
     L2Loss = nn.MSELoss()
 
-    Net_model = Net(planes=[3, 64, 64, 64, 64, 64, 64, 3], data_norm=(input_norm, field_norm)).to(device)
+    planes = [3,] + [opts.Layer_width] * opts.Layer_depth + [3,]
+    if opts.Net_pattern == "single":
+        Net_model = Net_single(planes=planes, data_norm=(input_norm, field_norm)).to(device)
+    elif opts.Net_pattern == "multi":
+        Net_model = Net_multi(planes=planes, data_norm=(input_norm, field_norm)).to(device)
     Optimizer1 = torch.optim.Adam(Net_model.parameters(), lr=0.001, betas=(0.8, 0.9))
     Optimizer2 = torch.optim.LBFGS(Net_model.parameters(), lr=1, max_iter=100, history_size=50,)
-    Boundary_epoch1 = [300000, 350000]
-    Boundary_epoch2 = [500000, 550000, 600000]
+    Boundary_epoch1 = [opts.epochs_adam*8/10, opts.epochs_adam*9/10]
+    Boundary_epoch2 = [opts.epochs_adam*11/10, opts.epochs_adam*12/10]
 
     Scheduler1 = torch.optim.lr_scheduler.MultiStepLR(Optimizer1, milestones=Boundary_epoch1, gamma=0.1)
     Scheduler2 = torch.optim.lr_scheduler.MultiStepLR(Optimizer2, milestones=Boundary_epoch2, gamma=0.1)
     Visual = visual_data.matplotlib_vision('/', field_name=('p', 'u', 'v'), input_name=('x', 'y'))
-    #
-    star_time = time.time()
+    Visual.font['size'] = 20
 
+    star_time = time.time()
+    start_epoch=0
+    log_loss=[]
     """load a pre-trained model"""
     start_epoch, log_loss = Net_model.loadmodel(os.path.join(work_path, 'latest_model.pth'))
     for i in range(start_epoch):
@@ -252,7 +290,7 @@ if __name__ == '__main__':
         # Training
     for iter in range(start_epoch, opts.epochs_adam):
 
-        if iter < 500000:
+        if iter < opts.epochs_adam:
             train(input, BCs, ICs, field, Net_model, L2Loss, Optimizer1, Scheduler1, log_loss, opts)
             learning_rate = Optimizer1.state_dict()['param_groups'][0]['lr']
         else:
@@ -271,11 +309,11 @@ if __name__ == '__main__':
 
             plt.figure(1, figsize=(20, 15))
             plt.clf()
-            plt.subplot(2,1,1)
+            plt.subplot(2, 1, 1)
             Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, -1], 'dat_loss')
             Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 0], 'eqs_loss')
             Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 5], 'ICS_loss_0')
-            plt.subplot(2,1,2)
+            plt.subplot(2, 1, 2)
             Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 1], 'BCS_loss_in')
             Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 2], 'BCS_loss_out')
             Visual.plot_loss(np.arange(len(log_loss)), np.array(log_loss)[:, 3], 'BCS_loss_wall')
@@ -291,16 +329,17 @@ if __name__ == '__main__':
             field_visual_p = field_visual_p.cpu().numpy()
 
             for t in range(field_visual_p.shape[0]):
-                plt.figure(2, figsize=(30, 12))
+                plt.figure(2, figsize=(20, 10))
                 plt.clf()
-                Visual.plot_fields_ms(field_visual_t[t], field_visual_p[t], input_visual_p[0, :, :, :2],
-                                      cmin_max=[[-5, -4], [6, 4]])
+                Visual.plot_fields_ms(field_visual_t[t], field_visual_p[t], input_visual_p[0, :, :, :2].numpy(),
+                                      cmin_max=[[-4, -4], [10, 4]], field_name=['p', 'u', 'v'])
+                plt.subplots_adjust(wspace=0.2, hspace=0.3)  # left=0.05, bottom=0.05, right=0.95, top=0.95
                 plt.savefig(os.path.join(tran_path, 'loca_' + str(t) + '.jpg'))
 
-                plt.figure(3, figsize=(30, 20))
+                plt.figure(3, figsize=(15, 12))
                 plt.clf()
                 Visual.plot_fields_ms(field_visual_t[t], field_visual_p[t], input_visual_p[0, :, :, :2].numpy())
-
+                plt.subplots_adjust(wspace=0.2, hspace=0.3)
                 plt.savefig(os.path.join(tran_path, 'full_' + str(t) + '.jpg'))
 
             torch.save({'epoch': iter, 'model': Net_model.state_dict(), 'log_loss': log_loss},
