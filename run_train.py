@@ -23,7 +23,8 @@ def get_args():
     parser.add_argument('--epochs_adam', default=400000, type=int)
     parser.add_argument('--save_freq', default=2000, type=int, help="frequency to save model and image")
     parser.add_argument('--print_freq', default=1000, type=int, help="frequency to print loss")
-    parser.add_argument('--device', default=0, type=int, help="time sampling in for boundary loss")
+    parser.add_argument('--device', default=0, type=int, help="gpu id")
+    parser.add_argument('--work_name', default='', type=str, help="work path to save files")
 
     parser.add_argument('--Nx_EQs', default=30000, type=int, help="xy sampling in for equation loss")
     parser.add_argument('--Nt_EQs', default=5, type=int, help="time sampling in for equation loss")
@@ -214,7 +215,7 @@ if __name__ == '__main__':
         device = torch.device('cpu')
 
     points_name = opts.points_name
-    work_name = 'NS-cylinder-2d-t_' + points_name
+    work_name = 'NS-cylinder-2d-t_' + points_name + '-' + opts.work_name
     work_path = os.path.join('work', work_name)
     tran_path = os.path.join('work', work_name, 'train')
     isCreated = os.path.exists(tran_path)

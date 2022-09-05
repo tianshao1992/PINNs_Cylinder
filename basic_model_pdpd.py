@@ -45,7 +45,7 @@ class DeepModel_multi(nn.Layer):
             start_epoch = checkpoint['epoch']
             print("load start epoch at " + str(start_epoch))
             log_loss = checkpoint['log_loss']  # .tolist()
-            return log_loss, start_epoch
+            return start_epoch, log_loss
         except:
             print("load model failed！ start a new model.")
             return 0, []
@@ -87,7 +87,7 @@ class DeepModel_single(nn.Layer):
             start_epoch = checkpoint['epoch']
             print("load start epoch at " + str(start_epoch))
             log_loss = checkpoint['log_loss']  # .tolist()
-            return log_loss, start_epoch
+            return start_epoch, log_loss
         except:
             print("load model failed！ start a new model.")
             return 0, []
