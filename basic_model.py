@@ -35,12 +35,16 @@ class DeepModel_multi(nn.Module):
             self.layers.append(nn.Sequential(*layer))
         self.apply(initialize_weights)
 
-    def forward(self, in_var):
+    def forward(self, in_var, is_norm=True):
         in_var = self.x_norm.norm(in_var)
         y = []
         for i in range(self.planes[-1]):
             y.append(self.layers[i](in_var))
-        return self.f_norm.back(torch.cat(y, dim=-1))
+        y = torch.cat(y, dim=-1)
+        if is_norm:
+            return self.f_norm.back(y)
+        else:
+            return y
 
     def loadmodel(self, File):
         try:

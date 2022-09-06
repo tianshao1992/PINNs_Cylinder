@@ -20,14 +20,14 @@ def get_args():
     parser.add_argument('--Layer_depth', default=5, type=int, help="Number of Layers depth")
     parser.add_argument('--Layer_width', default=64, type=int, help="Number of Layers width")
     parser.add_argument('--points_name', default="24+6+4", type=str)
-    parser.add_argument('--Net_pattern', default='multi', type=str, help="single or multi networks")
+    parser.add_argument('--Net_pattern', default='single', type=str, help="single or multi networks")
     parser.add_argument('--epochs_adam', default=400000, type=int)
-    parser.add_argument('--save_freq', default=2000, type=int, help="frequency to save model and image")
+    parser.add_argument('--save_freq', default=5000, type=int, help="frequency to save model and image")
     parser.add_argument('--print_freq', default=1000, type=int, help="frequency to print loss")
     parser.add_argument('--device', default=0, type=int, help="gpu id")
     parser.add_argument('--work_name', default='', type=str, help="work path to save files")
 
-    parser.add_argument('--Nx_EQs', default=20000, type=int, help="xy sampling in for equation loss")
+    parser.add_argument('--Nx_EQs', default=30000, type=int, help="xy sampling in for equation loss")
     parser.add_argument('--Nt_EQs', default=5, type=int, help="time sampling in for equation loss")
     parser.add_argument('--Nt_BCs', default=50, type=int, help="time sampling in for boundary loss")
 

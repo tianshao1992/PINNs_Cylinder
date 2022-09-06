@@ -71,14 +71,11 @@ class DeepModel_single(nn.Layer):
         self.layers = nn.Sequential(*self.layers)
         # self.apply(initialize_weights)
 
-    def forward(self, inn_var, is_norm=True):
+    def forward(self, inn_var):
         # inn_var = self.x_norm.norm(inn_var)
         out_var = self.layers(inn_var)
+        return out_var
 
-        if is_norm:
-            return self.f_norm.back(out_var)
-        else:
-            return out_var
 
     def loadmodel(self, File):
         try:
