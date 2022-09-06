@@ -29,7 +29,7 @@ def get_args():
 
     parser.add_argument('--Nx_EQs', default=30000, type=int, help="xy sampling in for equation loss")
     parser.add_argument('--Nt_EQs', default=5, type=int, help="time sampling in for equation loss")
-    parser.add_argument('--Nt_BCs', default=50, type=int, help="time sampling in for boundary loss")
+    parser.add_argument('--Nt_BCs', default=120, type=int, help="time sampling in for boundary loss")
 
     return parser.parse_args()
 
