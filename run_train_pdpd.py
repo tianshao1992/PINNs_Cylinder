@@ -19,9 +19,9 @@ def get_args():
     parser.add_argument('-f', type=str, default="external parameters")
     parser.add_argument('--Layer_depth', default=5, type=int, help="Number of Layers depth")
     parser.add_argument('--Layer_width', default=64, type=int, help="Number of Layers width")
-    parser.add_argument('--points_name', default="24+6+4", type=str)
+    parser.add_argument('--points_name', default="24+6+4", type=str, help="distribution of supervised points")
     parser.add_argument('--Net_pattern', default='single', type=str, help="single or multi networks")
-    parser.add_argument('--epochs_adam', default=400000, type=int)
+    parser.add_argument('--epochs_adam', default=400000, type=int, help='total training epoch')
     parser.add_argument('--save_freq', default=5000, type=int, help="frequency to save model and image")
     parser.add_argument('--print_freq', default=1000, type=int, help="frequency to print loss")
     parser.add_argument('--device', default=0, type=int, help="gpu id")
@@ -157,7 +157,7 @@ class Net_multi(DeepModel_multi):
 def train(inn_var, BCs, ICs, out_true, model, Loss, optimizer, scheduler, log_loss, opts):
 
 
-    inn = BCs[0].sampling(Nx=opts.Nx_EQs, Nt=opts.Nt_EQs)  #随机抽取流场点
+    inn = BCs[0].sampling(Nx=opts.Nx_EQs, Nt=opts.Nt_EQs)  #随机抽取守恒损失计算点
     BC_in = BCs[1].sampling(Nx='all', Nt=opts.Nt_BCs); ind_BC_in = BC_in.shape[0]  #入口
     BC_out = BCs[2].sampling(Nx='all', Nt=opts.Nt_BCs); ind_BC_out = BC_out.shape[0] + ind_BC_in #出口
     BC_wall = BCs[3].sampling(Nx='all', Nt=opts.Nt_BCs); ind_BC_wall = BC_wall.shape[0] + ind_BC_out #圆柱
