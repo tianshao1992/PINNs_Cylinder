@@ -17,7 +17,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 def get_args():
 
     parser = argparse.ArgumentParser('PINNs for naiver-stokes cylinder with Karman Vortex', add_help=False)
-    parser.add_argument('--points_name', default="30+4", type=str)
+    parser.add_argument('--points_name', default="8", type=str)
     parser.add_argument('--Layer_depth', default=6, type=int, help="Number of Layers depth")
     parser.add_argument('--Layer_width', default=64, type=int, help="Number of Layers width")
     parser.add_argument('--Net_pattern', default='single', type=str, help="single or multi networks")
