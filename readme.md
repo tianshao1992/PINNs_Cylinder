@@ -18,7 +18,7 @@
 
 ## 2.代码描述
 ### 2.1 代码说明
-1. [hpinn-paddle AI studio](https://aistudio.baidu.com/aistudio/projectdetail/4117361?contributionType=1&shared=1)相关运行结果
+1. [PINNs_Cylinder AI studio](https://aistudio.baidu.com/aistudio/projectdetail/4501565)相关运行结果
 
   - run_train_pdpd.py   为训练主程序
   - run_tvalidate_pdpd.py  为验证主程序
@@ -27,13 +27,15 @@
   - process_data_pdpd.py  为数据预处理
 
   - **work文件夹**中为模型训练过程及验证可视化
-    - \train  训练集数据（input_train.txt） & 训练过程的可视化
+    - \train  训练集数据 & 训练过程的可视化
     - \validation 验证数据的可视化
     - train.log 所有训练过程中的日志数据保存
     - valida.log 所有训练过程中的日志数据保存
     - latest_model.pth 模型文件
     
-  - **data文件夹**中为非定常2D圆柱绕流数据
+  - **data文件夹**中为非定常2D圆柱绕流数据，可从以下链接获取
+链接：https://pan.baidu.com/s/1RtBQaEzZQon0cxSzmau7kg 
+提取码：0040
 
 
 ### 2.2 环境依赖
@@ -310,7 +312,7 @@ $$ L_2 = \sum_{i,j=1,1}^{n,3}{\frac{|{\bf{f}}^i_j - \hat{\bf{f}}^i_j|_2^2}{|{\bf
 | 框架版本      | Paddle 2.3.2                                                 |
 | 应用场景      | 科学计算                                                     |
 | 支持硬件      | CPU、GPU                                                     |
-| AI studio地址 | https://aistudio.baidu.com/aistudio/projectdetail/4117361?contributionType=1&shared=1 |
+| AI studio地址 | [PINNs_Cylinder AI studio](https://aistudio.baidu.com/aistudio/projectdetail/4501565) |
 
 
 [1]: R. Franke, W. Rodi, and B. Schönung, “Numerical calculation of laminar vortex-shedding flow past cylinders,” _J. Wind Eng. Ind. Aerodyn._, vol. 35, pp. 237–257, Jan. 1990, doi: 10.1016/0167-6105(90)90219-3
