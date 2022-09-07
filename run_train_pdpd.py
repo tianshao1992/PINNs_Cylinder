@@ -28,8 +28,8 @@ def get_args():
     parser.add_argument('--work_name', default='', type=str, help="work path to save files")
 
     parser.add_argument('--Nx_EQs', default=30000, type=int, help="xy sampling in for equation loss")
-    parser.add_argument('--Nt_EQs', default=5, type=int, help="time sampling in for equation loss")
-    parser.add_argument('--Nt_BCs', default=120, type=int, help="time sampling in for boundary loss")
+    parser.add_argument('--Nt_EQs', default=10, type=int, help="time sampling in for equation loss")
+    parser.add_argument('--Nt_BCs', default=200, type=int, help="time sampling in for boundary loss")
 
     return parser.parse_args()
 
@@ -306,10 +306,10 @@ if __name__ == '__main__':
 
         if iter > 0 and iter % opts.print_freq == 0:
 
-            print('iter: {:6d}, lr: {:.1e}, cost: {:.2f}, dat_loss: {:.2e} \n'
+            print('iter: {:6d}/{:6d}, lr: {:.1e}, cost: {:.2f}, dat_loss: {:.2e} \n'
                   'eqs_loss: {:.2e}, BCS_loss_in: {:.2e}, BCS_loss_out: {:.2e}, '
                   'BCS_loss_wall: {:.2e}, BCS_loss_meas: {:.2e}, ICS_loss_0: {:.2e}'.
-                  format(iter, learning_rate, time.time() - star_time, log_loss[-1][-1],
+                  format(iter, opts.epochs_adam, learning_rate, time.time() - star_time, log_loss[-1][-1],
                          log_loss[-1][0], log_loss[-1][1], log_loss[-1][2],
                          log_loss[-1][3], log_loss[-1][4], log_loss[-1][5]))
 
