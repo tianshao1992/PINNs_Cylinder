@@ -1,9 +1,9 @@
 import h5py
 import numpy as np
-import paddle
-import paddle.nn as nn
-from process_data_pdpd import data_norm, data_sampler
-from basic_model_pdpd import gradients, DeepModel_single, DeepModel_multi
+import torch
+import torch.nn as nn
+from process_data import data_norm, data_sampler
+from basic_model import gradients, DeepModel_single, DeepModel_multi
 import visual_data
 import matplotlib.pyplot as plt
 import time
@@ -16,21 +16,19 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 def get_args():
 
     parser = argparse.ArgumentParser('PINNs for naiver-stokes cylinder with Karman Vortex', add_help=False)
-    parser.add_argument('-f', type=str, default="external parameters")
+    parser.add_argument('--points_name', default="8", type=str)
     parser.add_argument('--Layer_depth', default=5, type=int, help="Number of Layers depth")
     parser.add_argument('--Layer_width', default=64, type=int, help="Number of Layers width")
-    parser.add_argument('--points_name', default="24+6+4", type=str, help="distribution of supervised points")
     parser.add_argument('--Net_pattern', default='single', type=str, help="single or multi networks")
-    parser.add_argument('--epochs_adam', default=400000, type=int, help='total training epoch')
-    parser.add_argument('--save_freq', default=5000, type=int, help="frequency to save model and image")
+    parser.add_argument('--epochs_adam', default=400000, type=int)
+    parser.add_argument('--save_freq', default=2000, type=int, help="frequency to save model and image")
     parser.add_argument('--print_freq', default=1000, type=int, help="frequency to print loss")
     parser.add_argument('--device', default=0, type=int, help="gpu id")
     parser.add_argument('--work_name', default='', type=str, help="work path to save files")
 
     parser.add_argument('--Nx_EQs', default=30000, type=int, help="xy sampling in for equation loss")
-    parser.add_argument('--Nt_EQs', default=10, type=int, help="time sampling in for equation loss")
-    parser.add_argument('--Nt_BCs', default=200, type=int, help="time sampling in for boundary loss")
-
+    parser.add_argument('--Nt_EQs', default=5, type=int, help="time sampling in for equation loss")
+    parser.add_argument('--Nt_BCs', default=120, type=int, help="time sampling in for boundary loss")
     return parser.parse_args()
 
 def read_data():
@@ -59,39 +57,39 @@ def BCS_ICS(nodes, points):
         point = np.concatenate((Index[175:220:15, 0:64:8].reshape(-1, 1),
                                 Index[378:360:-15, 0:16:8].reshape(-1, 1),
                                 Index[14, 0:16:8].reshape(-1, 1)), axis=0)[:, 0]
-        BCS.append(np.concatenate((Index[::96, 1], point), axis=0))  # 24+6+4  尾迹+前缘+圆周
+        BCS.append(np.concatenate((Index[::96, 1], point), axis=0))#24+6+4  尾迹+前缘+圆周
     elif points == "30+4":
         point = np.concatenate((Index[175:220:15, 0:80:8].reshape(-1, 1)), axis=0)
-        BCS.append(np.concatenate((Index[::96, 1], point), axis=0))  # 30+4
+        BCS.append(np.concatenate((Index[::96, 1], point), axis=0))#30+4
     elif points == "48+12+8":
         point = np.concatenate((Index[175:220:15, 0:64:4].reshape(-1, 1),
                                 Index[378:360:-15, 0:32:8].reshape(-1, 1),
                                 Index[14, 0:32:8].reshape(-1, 1)), axis=0)[:, 0]
-        BCS.append(np.concatenate((Index[::48, 1], point), axis=0))  # 48+12+8  尾迹+前缘+圆周
+        BCS.append(np.concatenate((Index[::48, 1], point), axis=0))#48+12+8  尾迹+前缘+圆周
     elif points == "60+8":
         point = np.concatenate((Index[175:220:15, 0:80:4].reshape(-1, 1)), axis=0)
-        BCS.append(np.concatenate((Index[::48, 1], point), axis=0))  # 60+8
+        BCS.append(np.concatenate((Index[::48, 1], point), axis=0))#60+8
     elif points == "96+24+16":
         point = np.concatenate((Index[175:220:15, 0:64:2].reshape(-1, 1),
                                 Index[378:360:-15, 0:32:4].reshape(-1, 1),
                                 Index[14, 0:32:4].reshape(-1, 1)), axis=0)[:, 0]
-        BCS.append(np.concatenate((Index[::24, 1], point), axis=0))  # 96+24+16
+        BCS.append(np.concatenate((Index[::24, 1], point), axis=0))#96+24+16
     elif points == "120+16":
         point = np.concatenate((Index[175:220:15, 0:80:2].reshape(-1, 1)), axis=0)
-        BCS.append(np.concatenate((Index[::24, 1], point), axis=0))  # 120+16
+        BCS.append(np.concatenate((Index[::24, 1], point), axis=0))#120+16
     elif points == "192+48+32":
         point = np.concatenate((Index[175:220:15, 0:128:2].reshape(-1, 1),
                                 Index[378:360:-15, 0:64:4].reshape(-1, 1),
                                 Index[14, 0:64:4].reshape(-1, 1)), axis=0)[:, 0]
-        BCS.append(np.concatenate((Index[::12, 1], point), axis=0))  # 192+48+32
+        BCS.append(np.concatenate((Index[::12, 1], point), axis=0))#192+48+32
     elif points == "240+32":
         point = np.concatenate((Index[175:220:15, 0:160:2].reshape(-1, 1)), axis=0)
-        BCS.append(np.concatenate((Index[::12, 1], point), axis=0))  # 240+32
+        BCS.append(np.concatenate((Index[::12, 1], point), axis=0))#240+32
     elif points == "13":
         BCS.append(Index[::30, 1])  # 13
     elif points == "12+4":
         point = np.concatenate((Index[175:220:30, 0:48:8].reshape(-1, 1)), axis=0)
-        BCS.append(np.concatenate((Index[::96, 1], point), axis=0))  # 12+4
+        BCS.append(np.concatenate((Index[::96, 1], point), axis=0))   #12+4
     else:
         BCS.append(Index[::60, 1])  # 6
 
@@ -123,7 +121,7 @@ class Net_single(DeepModel_single):
         eq1 = dudt + (u * dudx + v * dudy) + dpdx - 1 / self.Re * (d2udx2 + d2udy2)
         eq2 = dvdt + (u * dvdx + v * dvdy) + dpdy - 1 / self.Re * (d2vdx2 + d2vdy2)
         eq3 = dudx + dvdy
-        eqs = paddle.concat((eq1, eq2, eq3), axis=1)
+        eqs = torch.cat((eq1, eq2, eq3), dim=1)
         return eqs
 
 class Net_multi(DeepModel_multi):
@@ -149,61 +147,57 @@ class Net_multi(DeepModel_multi):
         eq1 = dudt + (u * dudx + v * dudy) + dpdx - 1 / self.Re * (d2udx2 + d2udy2)
         eq2 = dvdt + (u * dvdx + v * dvdy) + dpdy - 1 / self.Re * (d2vdx2 + d2vdy2)
         eq3 = dudx + dvdy
-        eqs = paddle.concat((eq1, eq2, eq3), axis=1)
+        eqs = torch.cat((eq1, eq2, eq3), dim=1)
         return eqs
-
 
 
 def train(inn_var, BCs, ICs, out_true, model, Loss, optimizer, scheduler, log_loss, opts):
 
-
-    inn = BCs[0].sampling(Nx=opts.Nx_EQs, Nt=opts.Nt_EQs)  #随机抽取守恒损失计算点
-    BC_in = BCs[1].sampling(Nx='all', Nt=opts.Nt_BCs); ind_BC_in = BC_in.shape[0]  #入口
+    inn = BCs[0].sampling(Nx=opts.Nx_EQs, Nt=opts.Nt_EQs) #随机抽取流场点
+    BC_in = BCs[1].sampling(Nx='all', Nt=opts.Nt_BCs); ind_BC_in = BC_in.shape[0]   #入口
     BC_out = BCs[2].sampling(Nx='all', Nt=opts.Nt_BCs); ind_BC_out = BC_out.shape[0] + ind_BC_in #出口
     BC_wall = BCs[3].sampling(Nx='all', Nt=opts.Nt_BCs); ind_BC_wall = BC_wall.shape[0] + ind_BC_out #圆柱
     BC_meas = BCs[4].sampling(Nx='all', Nt=opts.Nt_BCs); ind_BC_meas = BC_meas.shape[0] + ind_BC_wall
+    IC_0 = ICs[0].sampling(Nx='all') #初始场
 
-    IC_0 = ICs[0].sampling(Nx='all')  #初始场
+    inn_BCs = torch.cat((inn_var[BC_in], inn_var[BC_out], inn_var[BC_wall], inn_var[BC_meas], inn_var[IC_0]), dim=0).to(device)
+    out_BCs = torch.cat((out_true[BC_in], out_true[BC_out], out_true[BC_wall], out_true[BC_meas], out_true[IC_0]), dim=0).to(device)
 
-    inn_BCs = paddle.concat((inn_var[BC_in], inn_var[BC_out], inn_var[BC_wall], inn_var[BC_meas], inn_var[IC_0]), axis=0)
-    out_BCs = paddle.concat((out_true[BC_in], out_true[BC_out], out_true[BC_wall], out_true[BC_meas], out_true[IC_0]), axis=0)
+    inn_EQs = inn_var[inn].to(device)
+    out_EQs = out_true[inn].to(device)
 
-    inn_EQs = inn_var[inn]
-    out_EQs = out_true[inn]
+    def closure():
 
+        optimizer.zero_grad()
 
-    optimizer.clear_grad()
+        inn_EQs.requires_grad_(True)
+        out_EQs_ = model(inn_EQs)
+        res_EQs = model.equation(inn_EQs, out_EQs_)
+        inn_BCs.requires_grad_(False)
+        out_BCs_ = model(inn_BCs)
 
-    inn_EQs.stop_gradient = False
-    out_EQs_ = model(inn_EQs)
-    res_EQs = model.equation(inn_EQs, out_EQs_)
-    inn_BCs.stop_gradient = True
-    out_BCs_ = model(inn_BCs)
+        bcs_loss_1 = Loss(out_BCs_[:ind_BC_in, 1:], out_BCs[:ind_BC_in, 1:])  #进口速度
+        bcs_loss_2 = Loss(out_BCs_[ind_BC_in:ind_BC_out, 0], out_BCs[ind_BC_in:ind_BC_out, 0])  #出口压力
+        bcs_loss_3 = Loss(out_BCs_[ind_BC_out:ind_BC_wall, 1:], out_BCs[ind_BC_out:ind_BC_wall, 1:])  #壁面速度
+        bcs_loss_4 = Loss(out_BCs_[ind_BC_wall:ind_BC_meas, :], out_BCs[ind_BC_wall:ind_BC_meas, :])  #监督测点
+        ics_loss_0 = Loss(out_BCs_[ind_BC_meas:, :], out_BCs[ind_BC_meas:, :])   #初始条件损失
+        eqs_loss = (res_EQs**2).mean()   #方程损失
 
-    bcs_loss_1 = Loss(out_BCs_[:ind_BC_in, 1:], out_BCs[:ind_BC_in, 1:])  #进口速度
-    bcs_loss_2 = Loss(out_BCs_[ind_BC_in:ind_BC_out, 0], out_BCs[ind_BC_in:ind_BC_out, 0])  #出口压力
-    bcs_loss_3 = Loss(out_BCs_[ind_BC_out:ind_BC_wall, 1:], out_BCs[ind_BC_out:ind_BC_wall, 1:])  #壁面速度
-    bcs_loss_4 = Loss(out_BCs_[ind_BC_wall:ind_BC_meas, :], out_BCs[ind_BC_wall:ind_BC_meas, :])  #监督测点
-    ics_loss_0 = Loss(out_BCs_[ind_BC_meas:, :], out_BCs[ind_BC_meas:, :])   #初始条件损失
-    eqs_loss = (res_EQs**2).mean()   #方程损失
+        loss_batch = bcs_loss_1 + bcs_loss_2 + bcs_loss_3 + bcs_loss_4 + ics_loss_0 + eqs_loss
+        loss_batch.backward()
 
-    loss_batch = bcs_loss_1 + bcs_loss_2 + bcs_loss_3 + bcs_loss_4 + ics_loss_0 + eqs_loss
-    loss_batch.backward()
+        data_loss = Loss(out_EQs_, out_EQs)   #全部点的data loss  没有用来训练
+        log_loss.append([eqs_loss.item(), bcs_loss_1.item(), bcs_loss_2.item(), bcs_loss_3.item(), bcs_loss_4.item(),
+                         ics_loss_0.item(), data_loss.item()])
 
-    data_loss = Loss(out_EQs_, out_EQs)   #全部点的data loss  没有用来训练
-    log_loss.append([eqs_loss.item(), bcs_loss_1.item(), bcs_loss_2.item(), bcs_loss_3.item(), bcs_loss_4.item(),
-                     ics_loss_0.item(), data_loss.item()])
+        return loss_batch
 
-        # return loss_batch
-
-    # optimizer.step(closure)
-    optimizer.step()
+    optimizer.step(closure)
     scheduler.step()
 
 def inference(inn_var, model):
 
-    with paddle.no_grad():
-
+    with torch.no_grad():
         out_pred = model(inn_var)
 
     return out_pred
@@ -212,17 +206,16 @@ def inference(inn_var, model):
 if __name__ == '__main__':
 
     opts = get_args()
-    print(opts)
 
-    if paddle.fluid.is_compiled_with_cuda():
-        paddle.set_device("gpu:" + str(opts.device)) # 指定第一块gpu
-        device = "gpu:" + str(opts.device)
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(opts.device)  # 指定第一块gpu
+
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
     else:
-        paddle.set_device('cpu')
-        device = 'cpu'
+        device = torch.device('cpu')
 
     points_name = opts.points_name
-    work_name = 'NS-cylinder-2d-t_pdpd_' + points_name + '-' + opts.work_name
+    work_name = 'NS-cylinder-2d-t_' + points_name + '-' + opts.work_name
     work_path = os.path.join('work', work_name)
     tran_path = os.path.join('work', work_name, 'train')
     isCreated = os.path.exists(tran_path)
@@ -232,7 +225,7 @@ if __name__ == '__main__':
     # 将控制台的结果输出到a.log文件，可以改成a.txt
     sys.stdout = visual_data.Logger(os.path.join(work_path, 'train.log'), sys.stdout)
 
-
+    print(opts)
     times, nodes, field = read_data()
     INN, BCS, ICS = BCS_ICS(nodes, points_name)
 
@@ -254,8 +247,8 @@ if __name__ == '__main__':
     field_visual = np.concatenate((field_visual, add_field), axis=1)
 
     # Training Data
-    input = paddle.to_tensor(input, dtype='float32')
-    field = paddle.to_tensor(field, dtype='float32')
+    input = torch.tensor(input, dtype=torch.float32)
+    field = torch.tensor(field, dtype=torch.float32)
 
     NumNodes = Nx * Ny
     BC_in = data_sampler(BCS[0], NumNodes, time=Nt)
@@ -276,15 +269,13 @@ if __name__ == '__main__':
         Net_model = Net_single(planes=planes, data_norm=(input_norm, field_norm)).to(device)
     elif opts.Net_pattern == "multi":
         Net_model = Net_multi(planes=planes, data_norm=(input_norm, field_norm)).to(device)
-
+    Optimizer1 = torch.optim.Adam(Net_model.parameters(), lr=0.001, betas=(0.8, 0.9))
+    Optimizer2 = torch.optim.LBFGS(Net_model.parameters(), lr=1, max_iter=100, history_size=50,)
     Boundary_epoch1 = [opts.epochs_adam*8/10, opts.epochs_adam*9/10]
     Boundary_epoch2 = [opts.epochs_adam*11/10, opts.epochs_adam*12/10]
-    Scheduler1 = paddle.optimizer.lr.MultiStepDecay(learning_rate=0.001, milestones=Boundary_epoch1, gamma=0.1)
-    Optimizer1 = paddle.optimizer.Adam(parameters=Net_model.parameters(), learning_rate=Scheduler1, beta1=0.8,
-                                        beta2=0.9)
-    # Optimizer2 = paddle.incubate.optimizer.functional.minimize_lbfgs(parameters=Net_model.parameters(), learning_rate=.1, max_iter=100)
-    # Scheduler2 = paddle.optimizer.lr.MultiStepDecay(Optimizer2, milestones=Boundary_epoch2, gamma=0.1)
 
+    Scheduler1 = torch.optim.lr_scheduler.MultiStepLR(Optimizer1, milestones=Boundary_epoch1, gamma=0.1)
+    Scheduler2 = torch.optim.lr_scheduler.MultiStepLR(Optimizer2, milestones=Boundary_epoch2, gamma=0.1)
     Visual = visual_data.matplotlib_vision('/', field_name=('p', 'u', 'v'), input_name=('x', 'y'))
     Visual.font['size'] = 20
 
@@ -297,12 +288,16 @@ if __name__ == '__main__':
         #  update the learning rate for start_epoch times
         Scheduler1.step()
 
-    # Training
+        # Training
     for iter in range(start_epoch, opts.epochs_adam):
 
         if iter < opts.epochs_adam:
             train(input, BCs, ICs, field, Net_model, L2Loss, Optimizer1, Scheduler1, log_loss, opts)
-            learning_rate = Optimizer1.get_lr()
+            learning_rate = Optimizer1.state_dict()['param_groups'][0]['lr']
+        else:
+            train(input, BCs, ICs, field, Net_model, L2Loss, Optimizer1, Scheduler2, log_loss, opts)
+            learning_rate = Optimizer2.state_dict()['param_groups'][0]['lr']
+
 
         if iter > 0 and iter % opts.print_freq == 0:
 
@@ -329,8 +324,8 @@ if __name__ == '__main__':
             star_time = time.time()
 
         if iter > 0 and iter % opts.save_freq == 0:
-            input_visual_p = paddle.to_tensor(input_visual[:100:10], dtype='float32', place='gpu:0')
-            field_visual_p = inference(input_visual_p, Net_model)
+            input_visual_p = torch.tensor(input_visual[:100:10], dtype=torch.float32)
+            field_visual_p = inference(input_visual_p.to(device), Net_model)
             field_visual_t = field_visual[:100:10]
             field_visual_p = field_visual_p.cpu().numpy()
 
@@ -342,11 +337,11 @@ if __name__ == '__main__':
                 plt.subplots_adjust(wspace=0.2, hspace=0.3)  # left=0.05, bottom=0.05, right=0.95, top=0.95
                 plt.savefig(os.path.join(tran_path, 'loca_' + str(t) + '.jpg'))
 
-                plt.figure(3, figsize=(30, 20))
+                plt.figure(3, figsize=(15, 12))
                 plt.clf()
                 Visual.plot_fields_ms(field_visual_t[t], field_visual_p[t], input_visual_p[0, :, :, :2].numpy())
                 plt.subplots_adjust(wspace=0.2, hspace=0.3)
                 plt.savefig(os.path.join(tran_path, 'full_' + str(t) + '.jpg'))
 
-            paddle.save({'epoch': iter, 'model': Net_model.state_dict(), 'log_loss': log_loss},
-                        os.path.join(work_path, 'latest_model.pth'))
+            torch.save({'epoch': iter, 'model': Net_model.state_dict(), 'log_loss': log_loss},
+                       os.path.join(work_path, 'latest_model.pth'))
