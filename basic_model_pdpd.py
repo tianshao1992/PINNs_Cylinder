@@ -30,13 +30,16 @@ class DeepModel_multi(nn.Layer):
             self.layers.append(nn.Sequential(*layer))
             # self.layers[-1].apply(initialize_weights)
 
-    def forward(self, in_var):
-        # in_var = self.x_norm.norm(in_var)
+    def forward(self, in_var, is_norm=True):
+        in_var = self.x_norm.norm(in_var)
         # in_var = in_var * self.input_transform
         y = []
         for i in range(self.planes[-1]):
             y.append(self.layers[i](in_var))
-        return paddle.concat(y, axis=-1)
+        if is_norm:
+            return self.f_norm.back(paddle.concat(y, axis=-1))
+        else:
+            return paddle.concat(y, axis=-1)
 
     def loadmodel(self, File):
         try:
@@ -71,11 +74,14 @@ class DeepModel_single(nn.Layer):
         self.layers = nn.Sequential(*self.layers)
         # self.apply(initialize_weights)
 
-    def forward(self, inn_var):
-        # inn_var = self.x_norm.norm(inn_var)
+    def forward(self, inn_var, is_norm=True):
+        inn_var = self.x_norm.norm(inn_var)
         out_var = self.layers(inn_var)
-        return out_var
 
+        if is_norm:
+            return self.f_norm.back(out_var)
+        else:
+            return out_var
 
     def loadmodel(self, File):
         try:

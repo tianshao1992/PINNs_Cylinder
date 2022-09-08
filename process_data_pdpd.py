@@ -10,18 +10,27 @@ class data_norm():
         if method == "min-max":
             self.max = np.max(data, axis=axis)
             self.min = np.min(data, axis=axis)
+            self.max_ = paddle.to_tensor(self.max)
+            self.min_ = paddle.to_tensor(self.min)
 
         elif method == "mean-std":
             self.mean = np.mean(data, axis=axis)
             self.std = np.std(data, axis=axis)
+            self.mean_ = paddle.to_tensor(self.mean)
+            self.std_ =  paddle.to_tensor(self.std)
 
     def norm(self, x):
         if paddle.is_tensor(x):
             if self.method == "min-max":
-                x = 2 * (x - paddle.to_tensor(self.min, place='gpu:0')) \
-                    / (paddle.to_tensor(self.max, place='gpu:0') - paddle.to_tensor(self.min, place='gpu:0')) - 1
+                y = []
+                for i in range(x.shape[-1]):
+                    y.append(paddle.scale(x[..., i:i+1], 2/(self.max_[i]-self.min_[i]),
+                                          -(self.max_[i]+self.min_[i])/(self.max_[i]-self.min_[i])))
             elif self.method == "mean-std":
-                x = (x - paddle.to_tensor(self.mean, place='gpu:0')) / (paddle.to_tensor(self.std, place='gpu:0'))
+                y = []
+                for i in range(x.shape[-1]):
+                    y.append(paddle.scale(x[..., i:i+1], 1/self.std_[i], -self.mean_[i]/self.std[i]))
+                x = paddle.concat(y, axis=-1)
         else:
             if self.method == "min-max":
                 x = 2 * (x - self.min) / (self.max - self.min) - 1
@@ -33,10 +42,15 @@ class data_norm():
     def back(self, x):
         if paddle.is_tensor(x):
             if self.method == "min-max":
-                x = (x + 1) / 2 * (paddle.to_tensor(self.max, place='gpu:0')
-                                   - paddle.to_tensor(self.min, place='gpu:0')) + paddle.to_tensor(self.min, place='gpu:0')
+                y = []
+                for i in range(x.shape[-1]):
+                    y.append(paddle.scale(x[..., i:i+1], (self.max_[i]-self.min_[i])/2, (self.max_[i]+self.min_[i])/2))
+                x = paddle.concat(y, axis=-1)
             elif self.method == "mean-std":
-                x = x * (paddle.to_tensor(self.std, place='gpu:0')) + paddle.to_tensor(self.mean, place='gpu:0')
+                y = []
+                for i in range(x.shape[-1]):
+                    y.append(paddle.scale(x[..., i:i+1], self.std_[i], self.mean_[i]))
+                x = paddle.concat(y, axis=-1)
         else:
             if self.method == "min-max":
                 x = (x + 1) / 2 * (self.max - self.min) + self.min
