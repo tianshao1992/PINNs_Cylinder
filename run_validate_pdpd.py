@@ -2,11 +2,11 @@ import numpy as np
 import paddle
 import paddle.nn as nn
 from process_data_pdpd import data_norm
-from basic_model_pdpd import gradients, Dynamicor, DeepModel_single, DeepModel_multi
+from basic_model_pdpd import Dynamicor
+from run_train_pdpd import read_data, Net_multi, Net_single, inference
 import visual_data
 import matplotlib.pyplot as plt
 import os
-import h5py
 import argparse
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -15,10 +15,13 @@ def get_args():
 
     parser = argparse.ArgumentParser('PINNs for naiver-stokes cylinder with Karman Vortex', add_help=False)
     parser.add_argument('-f', type=str, default="external parameters")
-    parser.add_argument('--points_name', default="48+12+8", type=str)
+    parser.add_argument('--points_name', default="60+8", type=str)
     parser.add_argument('--Layer_depth', default=5, type=int, help="Number of Layers depth")
     parser.add_argument('--Layer_width', default=64, type=int, help="Number of Layers width")
-    parser.add_argument('--Net_pattern', default='multi', type=str, help="single or multi networks")
+    parser.add_argument('--in_norm', default=True, type=bool, help="input feature normalization")
+    parser.add_argument('--out_norm', default=True, type=bool, help="output fields normalization")
+    parser.add_argument('--activation', default=nn.Tanh(), help="activation function")
+    parser.add_argument('--Net_pattern', default='single', type=str, help="single or multi networks")
     parser.add_argument('--epochs_adam', default=400000, type=int)
     parser.add_argument('--save_freq', default=5000, type=int, help="frequency to save model and image")
     parser.add_argument('--print_freq', default=1000, type=int, help="frequency to print loss")
@@ -30,81 +33,6 @@ def get_args():
     parser.add_argument('--Nt_BCs', default=120, type=int, help="time sampling in for boundary loss")
 
     return parser.parse_args()
-
-# def cal_force():
-
-def read_data():
-    data = h5py.File('./data/cyl_Re250.mat', 'r')
-
-    nodes = np.array(data['grids_']).squeeze().transpose((3, 2, 1, 0)) # [Nx, Ny, Nf]
-    field = np.array(data['fields_']).squeeze().transpose((3, 2, 1, 0)) # [Nt, Nx, Ny, Nf]
-    times = np.array(data['dynamics_']).squeeze().transpose((1, 0))[3::4, (0,)] # (800, 3) -> (200, 1)
-    nodes = nodes[0]
-    times = times - times[0, 0]
-
-    return times[:120], nodes[:, :, 1:], field[:120, :, :, :]   # Nx / 2
-
-class Net_single(DeepModel_single):
-    def __init__(self, planes, data_norm):
-        super(Net_single, self).__init__(planes, data_norm, active=nn.Tanh())
-        self.Re = 250.
-
-    def equation(self, inn_var, out_var):
-        # a = grad(psi.sum(), in_var, create_graph=True, retain_graph=True)[0]
-        p, u, v = out_var[:, 0:1], out_var[:, 1:2], out_var[:, 2:3]
-
-        duda = gradients(u, inn_var)
-        dudx, dudy, dudt = duda[:, 0:1], duda[:, 1:2], duda[:, 2:3]
-        dvda = gradients(v, inn_var)
-        dvdx, dvdy, dvdt = dvda[:, 0:1], dvda[:, 1:2], dvda[:, 2:3]
-        d2udx2 = gradients(dudx, inn_var)[:, 0:1]
-        d2udy2 = gradients(dudy, inn_var)[:, 1:2]
-        d2vdx2 = gradients(dvdx, inn_var)[:, 0:1]
-        d2vdy2 = gradients(dvdy, inn_var)[:, 1:2]
-        dpda = gradients(p, inn_var)
-        dpdx, dpdy = dpda[:, 0:1], dpda[:, 1:2]
-
-        eq1 = dudt + (u * dudx + v * dudy) + dpdx - 1 / self.Re * (d2udx2 + d2udy2)
-        eq2 = dvdt + (u * dvdx + v * dvdy) + dpdy - 1 / self.Re * (d2vdx2 + d2vdy2)
-        eq3 = dudx + dvdy
-        eqs = paddle.concat((eq1, eq2, eq3), axis=1)
-        return eqs
-
-class Net_multi(DeepModel_multi):
-    def __init__(self, planes, data_norm):
-        super(Net_multi, self).__init__(planes, data_norm, active=nn.Tanh())
-        self.Re = 250.
-
-    def equation(self, inn_var, out_var):
-        # a = grad(psi.sum(), in_var, create_graph=True, retain_graph=True)[0]
-        p, u, v = out_var[:, 0:1], out_var[:, 1:2], out_var[:, 2:3]
-
-        duda = gradients(u, inn_var)
-        dudx, dudy, dudt = duda[:, 0:1], duda[:, 1:2], duda[:, 2:3]
-        dvda = gradients(v, inn_var)
-        dvdx, dvdy, dvdt = dvda[:, 0:1], dvda[:, 1:2], dvda[:, 2:3]
-        d2udx2 = gradients(dudx, inn_var)[:, 0:1]
-        d2udy2 = gradients(dudy, inn_var)[:, 1:2]
-        d2vdx2 = gradients(dvdx, inn_var)[:, 0:1]
-        d2vdy2 = gradients(dvdy, inn_var)[:, 1:2]
-        dpda = gradients(p, inn_var)
-        dpdx, dpdy = dpda[:, 0:1], dpda[:, 1:2]
-
-        eq1 = dudt + (u * dudx + v * dudy) + dpdx - 1 / self.Re * (d2udx2 + d2udy2)
-        eq2 = dvdt + (u * dvdx + v * dvdy) + dpdy - 1 / self.Re * (d2vdx2 + d2vdy2)
-        eq3 = dudx + dvdy
-        eqs = paddle.concat((eq1, eq2, eq3), axis=1)
-        return eqs
-
-
-
-def inference(inn_var, model):
-
-    with paddle.no_grad():
-
-        out_pred = model(inn_var)
-
-    return out_pred
 
 
 if __name__ == '__main__':
@@ -128,7 +56,7 @@ if __name__ == '__main__':
         os.makedirs(vald_path)
 
     times, nodes, field = read_data()
-    Dyn_model = Dynamicor(device, nodes[:, (0,1), :])
+    Dyn_model = Dynamicor(device, nodes[:, (0, 1), :])
 
     Nt, Nx, Ny, Nf = field.shape[0], field.shape[1], field.shape[2], field.shape[3]
 
@@ -150,9 +78,9 @@ if __name__ == '__main__':
 
     planes = [3,] + [opts.Layer_width] * opts.Layer_depth + [3,]
     if opts.Net_pattern == "single":
-        Net_model = Net_single(planes=planes, data_norm=(input_norm, field_norm)).to(device)
+        Net_model = Net_single(planes=planes, data_norm=(input_norm, field_norm), active=opts.activation).to(device)
     elif opts.Net_pattern == "multi":
-        Net_model = Net_multi(planes=planes, data_norm=(input_norm, field_norm)).to(device)
+        Net_model = Net_multi(planes=planes, data_norm=(input_norm, field_norm), active=opts.activation).to(device)
     Visual = visual_data.matplotlib_vision(vald_path, field_name=('p', 'u', 'v'), input_name=('x', 'y'))
     Visual.font['size'] = 20
     start_epoch, log_loss = Net_model.loadmodel(os.path.join(work_path, 'latest_model.pth'))
@@ -181,7 +109,7 @@ if __name__ == '__main__':
     print("plot several true and predicted fields")
     inds = np.concatenate((np.zeros((1,), dtype=np.int32), np.linspace(0, 100, 11, dtype=np.int32)))
     input_visual_p = paddle.to_tensor(input_visual[inds], dtype='float32', place=device)
-    field_visual_p = inference(input_visual_p, Net_model)
+    field_visual_p = inference(input_visual_p, Net_model, opts)
     field_visual_t = field_visual[inds]
     field_visual_p = field_visual_p.cpu().numpy()
     input_visual_p = input_visual_p.cpu().numpy()
@@ -204,7 +132,7 @@ if __name__ == '__main__':
 ####################################### plot continous fields #################################################################################
 
     input_visual_p = paddle.to_tensor(input_visual[::5], dtype='float32', place=device)
-    field_visual_p = inference(input_visual_p, Net_model)
+    field_visual_p = inference(input_visual_p, Net_model, opts)
     field_visual_t = field_visual[::5]
     field_visual_p = field_visual_p.cpu().numpy()
     input_visual_p = input_visual_p.cpu().numpy()

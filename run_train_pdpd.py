@@ -17,8 +17,11 @@ def get_args():
 
     parser = argparse.ArgumentParser('PINNs for naiver-stokes cylinder with Karman Vortex', add_help=False)
     parser.add_argument('-f', type=str, default="external parameters")
-    parser.add_argument('--Layer_depth', default=5, type=int, help="Number of Layers depth")
+    parser.add_argument('--Layer_depth', default=6, type=int, help="Number of Layers depth")
     parser.add_argument('--Layer_width', default=64, type=int, help="Number of Layers width")
+    parser.add_argument('--in_norm', default=True, type=bool, help="input feature normalization")
+    parser.add_argument('--out_norm', default=True, type=bool, help="output fields normalization")
+    parser.add_argument('--activation', default=nn.Tanh(), help="activation function")
     parser.add_argument('--points_name', default="24+6+4", type=str, help="distribution of supervised points")
     parser.add_argument('--Net_pattern', default='single', type=str, help="single or multi networks")
     parser.add_argument('--epochs_adam', default=400000, type=int, help='total training epoch')
@@ -28,8 +31,8 @@ def get_args():
     parser.add_argument('--work_name', default='', type=str, help="work path to save files")
 
     parser.add_argument('--Nx_EQs', default=30000, type=int, help="xy sampling in for equation loss")
-    parser.add_argument('--Nt_EQs', default=10, type=int, help="time sampling in for equation loss")
-    parser.add_argument('--Nt_BCs', default=200, type=int, help="time sampling in for boundary loss")
+    parser.add_argument('--Nt_EQs', default=2, type=int, help="time sampling in for equation loss")
+    parser.add_argument('--Nt_BCs', default=120, type=int, help="time sampling in for boundary loss")
 
     return parser.parse_args()
 
@@ -101,8 +104,8 @@ def BCS_ICS(nodes, points):
     return INN, BCS, ICS
 
 class Net_single(DeepModel_single):
-    def __init__(self, planes, data_norm):
-        super(Net_single, self).__init__(planes, data_norm, active=nn.Tanh())
+    def __init__(self, planes, data_norm, active):
+        super(Net_single, self).__init__(planes, data_norm, active)
         self.Re = 250.
 
     def equation(self, inn_var, out_var):
@@ -127,8 +130,8 @@ class Net_single(DeepModel_single):
         return eqs
 
 class Net_multi(DeepModel_multi):
-    def __init__(self, planes, data_norm):
-        super(Net_multi, self).__init__(planes, data_norm, active=nn.Tanh())
+    def __init__(self, planes, data_norm, active):
+        super(Net_multi, self).__init__(planes, data_norm, active)
         self.Re = 250.
 
     def equation(self, inn_var, out_var):
@@ -175,10 +178,10 @@ def train(inn_var, BCs, ICs, out_true, model, Loss, optimizer, scheduler, log_lo
     optimizer.clear_grad()
 
     inn_EQs.stop_gradient = False
-    out_EQs_ = model(inn_EQs)
+    out_EQs_ = model(inn_EQs, in_norm=opts.in_norm, out_norm=opts.out_norm)
     res_EQs = model.equation(inn_EQs, out_EQs_)
     inn_BCs.stop_gradient = True
-    out_BCs_ = model(inn_BCs)
+    out_BCs_ = model(inn_BCs, in_norm=opts.in_norm, out_norm=opts.out_norm)
 
     bcs_loss_1 = Loss(out_BCs_[:ind_BC_in, 1:], out_BCs[:ind_BC_in, 1:])  #进口速度
     bcs_loss_2 = Loss(out_BCs_[ind_BC_in:ind_BC_out, 0], out_BCs[ind_BC_in:ind_BC_out, 0])  #出口压力
@@ -200,11 +203,11 @@ def train(inn_var, BCs, ICs, out_true, model, Loss, optimizer, scheduler, log_lo
     optimizer.step()
     scheduler.step()
 
-def inference(inn_var, model):
+def inference(inn_var, model, opts):
 
     with paddle.no_grad():
 
-        out_pred = model(inn_var)
+        out_pred = model(inn_var, in_norm=opts.in_norm, out_norm=opts.out_norm)
 
     return out_pred
 
@@ -273,9 +276,9 @@ if __name__ == '__main__':
 
     planes = [3,] + [opts.Layer_width] * opts.Layer_depth + [3,]
     if opts.Net_pattern == "single":
-        Net_model = Net_single(planes=planes, data_norm=(input_norm, field_norm)).to(device)
+        Net_model = Net_single(planes=planes, data_norm=(input_norm, field_norm), active=opts.activation).to(device)
     elif opts.Net_pattern == "multi":
-        Net_model = Net_multi(planes=planes, data_norm=(input_norm, field_norm)).to(device)
+        Net_model = Net_multi(planes=planes, data_norm=(input_norm, field_norm), active=opts.activation).to(device)
 
     Boundary_epoch1 = [opts.epochs_adam*8/10, opts.epochs_adam*9/10]
     Boundary_epoch2 = [opts.epochs_adam*11/10, opts.epochs_adam*12/10]
